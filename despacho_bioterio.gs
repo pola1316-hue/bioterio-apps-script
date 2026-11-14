@@ -455,7 +455,8 @@ function generarTablaFinal() {
   hoja.getRange("A3").setValue("Fecha fin");
   hoja.getRange("B2").setValue(rango ? rango.inicio : "");
   hoja.getRange("B3").setValue(rango ? rango.fin : "");
-  hoja.getRange("B2:B3").setNumberFormat("dd/mm/yyyy")
+  formatearSeguro_(hoja.getRange("B2:B3"), "dd/mm/yyyy");
+  hoja.getRange("B2:B3")
     .setBackground("#FFF2CC").setBorder(true, true, true, true, true, true);
   hoja.getRange("C2").setValue("Escribe las fechas y pulsa '2. Generar tabla resumen'. Vacías = todo el registro.")
     .setFontStyle("italic");
@@ -531,14 +532,14 @@ function generarResumenMensual() {
   const conservEsp = [];
   const conservDes = [];
   const ultimaFila = hoja.getLastRow();
-  if (ultimaFila >= 2) {
-    const bloqueEsp = hoja.getRange(2, 1, ultimaFila - 1, ENCABEZADOS_RESUMEN.length).getValues();
+  if (ultimaFila >= 3) {
+    const bloqueEsp = hoja.getRange(3, 1, ultimaFila - 2, ENCABEZADOS_RESUMEN.length).getValues();
     bloqueEsp.forEach(function(f) {
       if (f[0] === "" || f[1] === "" || f[2] === "") return;
       if (!mesesRecalculados[f[0] + "-" + Number(f[1])]) conservEsp.push(f);
     });
     if (hoja.getLastColumn() >= 9) {
-      const bloqueDes = hoja.getRange(2, 9, ultimaFila - 1, ENCABEZADOS_RESUMEN_DESTINO.length).getValues();
+      const bloqueDes = hoja.getRange(3, 9, ultimaFila - 2, ENCABEZADOS_RESUMEN_DESTINO.length).getValues();
       bloqueDes.forEach(function(f) {
         if (f[0] === "" || f[1] === "" || f[2] === "") return;
         if (!mesesRecalculados[f[0] + "-" + Number(f[1])]) conservDes.push(f);
@@ -570,25 +571,28 @@ function generarResumenMensual() {
   // 3. Reescribir la hoja.
   hoja.clear();
 
-  hoja.getRange(1, 1, 1, ENCABEZADOS_RESUMEN.length)
+  // Títulos en la fila 1 y encabezados en la fila 2; los datos empiezan en la fila 3.
+  hoja.getRange(1, 1).setValue("Resumen mensual - Producción").setFontSize(12).setFontWeight("bold");
+  hoja.getRange(2, 1, 1, ENCABEZADOS_RESUMEN.length)
     .setValues([ENCABEZADOS_RESUMEN])
     .setFontWeight("bold").setBackground("#1F6F4A").setFontColor("#FFFFFF");
   if (filasEsp.length) {
-    hoja.getRange(2, 1, filasEsp.length, ENCABEZADOS_RESUMEN.length)
+    hoja.getRange(3, 1, filasEsp.length, ENCABEZADOS_RESUMEN.length)
       .setValues(filasEsp).setBorder(true, true, true, true, true, true);
-    hoja.getRange(2, 7, filasEsp.length, 1).setNumberFormat("dd/mm/yyyy hh:mm");
+    formatearSeguro_(hoja.getRange(3, 7, filasEsp.length, 1), "dd/mm/yyyy hh:mm");
   }
 
-  hoja.getRange(1, 9, 1, ENCABEZADOS_RESUMEN_DESTINO.length)
+  hoja.getRange(1, 9).setValue("Resumen mensual - Destino").setFontSize(12).setFontWeight("bold");
+  hoja.getRange(2, 9, 1, ENCABEZADOS_RESUMEN_DESTINO.length)
     .setValues([ENCABEZADOS_RESUMEN_DESTINO])
     .setFontWeight("bold").setBackground("#1F6F4A").setFontColor("#FFFFFF");
   if (filasDes.length) {
-    hoja.getRange(2, 9, filasDes.length, ENCABEZADOS_RESUMEN_DESTINO.length)
+    hoja.getRange(3, 9, filasDes.length, ENCABEZADOS_RESUMEN_DESTINO.length)
       .setValues(filasDes).setBorder(true, true, true, true, true, true);
-    hoja.getRange(2, 15, filasDes.length, 1).setNumberFormat("dd/mm/yyyy hh:mm");
+    formatearSeguro_(hoja.getRange(3, 15, filasDes.length, 1), "dd/mm/yyyy hh:mm");
   }
 
-  hoja.setFrozenRows(1);
+  hoja.setFrozenRows(2);
   hoja.autoResizeColumns(1, ENCABEZADOS_RESUMEN.length);
   hoja.autoResizeColumns(9, ENCABEZADOS_RESUMEN_DESTINO.length);
 }
@@ -604,6 +608,14 @@ function acumularMes_(mapa, clave, ym, nombre, f) {
 }
 
 // ================== AUXILIARES ==================
+// Aplica formato de número/fecha sin detener la generación de datos si Sheets lo rechaza.
+function formatearSeguro_(rango, formato) {
+  try {
+    rango.setNumberFormat(formato);
+  } catch (e) {
+    Logger.log("Formato no aplicado en " + rango.getA1Notation() + ": " + e.message);
+  }
+}
 // Posición de un valor en una lista de orden; los desconocidos quedan al final.
 function indiceOrden_(valor, orden) {
   const i = orden.indexOf(valor);
