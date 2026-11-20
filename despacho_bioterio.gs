@@ -431,7 +431,18 @@ function guardarDespachoIA(registros, nombreArchivo, imageId) {
 // the exact column, so existing data is never read into the wrong column.
 function verificarEncabezadosDespacho_(hoja) {
   if (hoja.getMaxColumns() < NUM_COLUMNAS) hoja.insertColumnsAfter(hoja.getMaxColumns(), NUM_COLUMNAS - hoja.getMaxColumns());
-  const actual = hoja.getRange(1, 1, 1, NUM_COLUMNAS).getValues()[0].map(function(v) { return String(v).trim(); });
+  let actual = hoja.getRange(1, 1, 1, NUM_COLUMNAS).getValues()[0].map(function(v) { return String(v).trim(); });
+  // A sheet turned into a Sheets table gets generic names ("Columna 1", "Column 1"); the data keeps its order,
+  // so the real names are written back. If the real names ended up in row 2, row 1 must be deleted by hand.
+  const genericos = actual.filter(function(v) { return /^(columna|column)\s*\d+$/i.test(v); }).length;
+  if (genericos && genericos === actual.filter(function(v) { return v !== ""; }).length) {
+    const fila2 = String(hoja.getRange(2, 1).getValue()).trim();
+    if (fila2 === ENCABEZADOS_DESPACHO[0]) {
+      throw new Error("La fila 1 de 'Despacho IA' tiene nombres genéricos de tabla ('Columna 1'…) y los encabezados quedaron en la fila 2. Borre la fila 1 y vuelva a intentar.");
+    }
+    hoja.getRange(1, 1, 1, NUM_COLUMNAS).setValues([ENCABEZADOS_DESPACHO]).setFontWeight("bold");
+    actual = ENCABEZADOS_DESPACHO.slice();
+  }
   let ultima = -1;
   actual.forEach(function(v, i) { if (v !== "") ultima = i; });
   const diferencias = [];
