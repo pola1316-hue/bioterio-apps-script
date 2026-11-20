@@ -67,6 +67,7 @@ Reglas:
 - Incluye una entrada por cada fila con datos. Ignora filas vacías.
 - No inventes datos. Si una celda está vacía, usa "".
 - Si una FILA COMPLETA está tachada, no la incluyas. El operario corrige en la fila siguiente.
+- La hoja puede estar inclinada y lo escrito en "Destino" y en los encargados puede quedar un poco más arriba o más abajo de su línea. Para armar cada fila, cuenta las filas desde arriba en cada columna: la fila 1 de "Fecha" va con la fila 1 de "Destino" y de los encargados, la fila 2 con la fila 2, y así. Una fila tachada ocupa su lugar en todas las columnas aunque no la incluyas, para que las filas de abajo no se corran.
 - Si UNA CELDA está tachada, escribe exactamente "tachón" en ese campo. No leas ni adivines el valor tachado. No agregues observaciones sobre tachones.
 - "cantidad_individuos": solo si la celda es un número sin unidad de peso (por ejemplo "12" o "1"). Escríbelo tal como aparece.
 - "peso": si la celda trae una referencia a gramos (g, gr, grs, gramos o similar, por ejemplo "180 gr" o "110g"), escribe ese valor tal como aparece en "peso" y deja "cantidad_individuos" vacío.
