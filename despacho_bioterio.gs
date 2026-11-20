@@ -334,6 +334,13 @@ function validarDespacho(r) {
   r.cantidad_individuos = sep.cantidad;
   r.peso = sep.peso;
 
+  // A crossed-out row often arrives with almost every field empty; if it stays, the rows below look shifted.
+  const vacioOTachon = function(v) { return String(v || "").trim() === "" || esTachado(v); };
+  const huecos = [fecha, r.produccion_a_despachar, r.cantidad_individuos + r.peso, r.destino].filter(vacioOTachon).length;
+  if (huecos >= 3) {
+    alertas.push({ tipo: "posible_fila_tachada", mensaje: "Casi toda la fila está vacía o tachada: puede ser una fila tachada que se debe borrar. Si es así, revise también que el destino y los encargados de las filas de abajo no hayan quedado corridos una fila." });
+  }
+
   if (r.cantidad_individuos === "" && r.peso === "") {
     alertas.push({ tipo: "cantidad_faltante", mensaje: "No se leyó cantidad ni peso." });
   } else {
