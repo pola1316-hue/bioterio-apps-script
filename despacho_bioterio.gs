@@ -427,14 +427,24 @@ function guardarDespachoIA(registros, nombreArchivo, imageId) {
   hoja.getRange(hoja.getLastRow() + 1, 1, filas.length, NUM_COLUMNAS).setValues(filas);
 }
 
+// Headers added in later versions at the end of the sheet are written when missing; any other difference stops with
+// the exact column, so existing data is never read into the wrong column.
 function verificarEncabezadosDespacho_(hoja) {
-  if (hoja.getMaxColumns() < NUM_COLUMNAS) {
-    throw new Error("La hoja 'Despacho IA' no tiene la columna 'Destino (lectura original)' en P1. Agrégala o elimina la hoja y vuelve a procesar.");
+  if (hoja.getMaxColumns() < NUM_COLUMNAS) hoja.insertColumnsAfter(hoja.getMaxColumns(), NUM_COLUMNAS - hoja.getMaxColumns());
+  const actual = hoja.getRange(1, 1, 1, NUM_COLUMNAS).getValues()[0].map(function(v) { return String(v).trim(); });
+  let ultima = -1;
+  actual.forEach(function(v, i) { if (v !== "") ultima = i; });
+  const diferencias = [];
+  ENCABEZADOS_DESPACHO.forEach(function(h, i) {
+    if (i > ultima) return;
+    if (actual[i] !== h) diferencias.push("columna " + String.fromCharCode(65 + i) + " dice '" + actual[i] + "' y debe decir '" + h + "'");
+  });
+  if (diferencias.length) {
+    throw new Error("La fila 1 de 'Despacho IA' no coincide: " + diferencias.join("; ") + ". Corrija esos encabezados y vuelva a intentar.");
   }
-  const actual = hoja.getRange(1, 1, 1, NUM_COLUMNAS).getValues()[0];
-  const diferente = ENCABEZADOS_DESPACHO.some(function(h, i) { return String(actual[i]).trim() !== h; });
-  if (diferente) {
-    throw new Error("La hoja 'Despacho IA' tiene encabezados antiguos. Revisa la fila 1 (columna P debe ser 'Destino (lectura original)') o elimina la hoja y vuelve a procesar.");
+  if (ultima < NUM_COLUMNAS - 1) {
+    hoja.getRange(1, ultima + 2, 1, NUM_COLUMNAS - ultima - 1)
+      .setValues([ENCABEZADOS_DESPACHO.slice(ultima + 1)]).setFontWeight("bold");
   }
 }
 
