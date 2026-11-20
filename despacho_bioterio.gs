@@ -3,6 +3,23 @@
 const HOJA_DESPACHO = "Despacho IA";
 const HOJA_RESUMEN = "Resumen mensual";
 const HOJA_TABLA = "Tabla final";
+const HOJA_PESOS = "Pesos promedio";
+
+// Peso promedio por individuo (g) para pasar a gramos lo que se despacha contado.
+// Se crean en la hoja 'Pesos promedio' la primera vez; desde ahí el zootecnista los cambia.
+const PESOS_DEFECTO = [
+  ["Codornices", 120, ""],
+  ["Ratones", 30, ""],
+  ["Ratas", 150, "Promedio: salen ratas de 60 g hasta de 300-500 g."],
+  ["Conejos", 200, "Pesar los conejos nuevos: los que están llegando son más grandes."],
+  ["Curies", "", "Sin peso promedio todavía."],
+  ["Pollos", "", "Sin peso promedio todavía."],
+  ["Gallina", "", "Sin peso promedio todavía."],
+  ["Zophobas", "", "Si se despachan contados, escribir el peso promedio."],
+  ["Dubias", "", "Si se despachan contadas, escribir el peso promedio."],
+  ["Grillos", "", "Normalmente se despachan pesados."],
+  ["Tenebrios", "", "Normalmente se despachan pesados."]
+];
 const VALOR_TACHON = "tachón";
 
 const COL = {
@@ -22,14 +39,16 @@ const ENCABEZADOS_DESPACHO = [
 const NUM_COLUMNAS = ENCABEZADOS_DESPACHO.length;
 
 const ENCABEZADOS_RESUMEN = [
-  "Año", "Mes", "Producción", "Total individuos", "Total peso (g)",
-  "Registros validados", "Última actualización"
+  "Año", "Mes", "Producción", "Total individuos", "Peso pesado (g)", "Peso estimado (g)",
+  "Peso total (kg)", "Registros validados", "Última actualización"
 ];
 
 const ENCABEZADOS_RESUMEN_DESTINO = [
-  "Año", "Mes", "Destino", "Total individuos", "Total peso (g)",
-  "Registros validados", "Última actualización"
+  "Año", "Mes", "Destino", "Total individuos", "Peso pesado (g)", "Peso estimado (g)",
+  "Peso total (kg)", "Registros validados", "Última actualización"
 ];
+// El bloque de destino empieza dos columnas después del de producción.
+const COL_RESUMEN_DESTINO = ENCABEZADOS_RESUMEN.length + 2;
 
 // Orden fijo con el que aparecen las producciones y destinos en los resúmenes.
 const ORDEN_ESPECIES = [
@@ -428,6 +447,43 @@ function esFilaValida_(f) {
   return aNumero_(f[COL.CANTIDAD]) !== null || aNumero_(f[COL.PESO]) !== null;
 }
 
+// ================== PESOS PROMEDIO ==================
+// Lee 'Pesos promedio' (Producción | Peso promedio (g) | Nota). Si no existe, la crea con los valores por defecto.
+function leerPesosPromedio_() {
+  const libro = SpreadsheetApp.getActiveSpreadsheet();
+  let hoja = libro.getSheetByName(HOJA_PESOS);
+  if (!hoja) {
+    hoja = libro.insertSheet(HOJA_PESOS);
+    hoja.getRange(1, 1, 1, 3).setValues([["Producción", "Peso promedio (g)", "Nota"]])
+      .setFontWeight("bold").setBackground("#1F6F4A").setFontColor("#FFFFFF");
+    hoja.getRange(2, 1, PESOS_DEFECTO.length, 3).setValues(PESOS_DEFECTO);
+    hoja.getRange(2, 2, PESOS_DEFECTO.length, 1).setBackground("#FFF2CC");
+    hoja.setFrozenRows(1);
+    hoja.autoResizeColumns(1, 3);
+  }
+  const pesos = {};
+  if (hoja.getLastRow() < 2) return pesos;
+  hoja.getRange(2, 1, hoja.getLastRow() - 1, 2).getValues().forEach(function(f) {
+    const especie = especieOficial_(f[0]);
+    const g = aNumero_(f[1]);
+    if (especie && g !== null && g > 0) pesos[especie] = g;
+  });
+  return pesos;
+}
+
+// Gramos de una fila: el peso anotado si lo hay; si no, individuos x peso promedio.
+function pesoFila_(f, pesos) {
+  const especie = especieOficial_(f[COL.ESPECIE]);
+  const pesado = aNumero_(f[COL.PESO]);
+  const ind = aNumero_(f[COL.CANTIDAD]);
+  if (pesado !== null) return { pesado: pesado, estimado: 0, total: pesado, origen: "Pesado" };
+  if (ind !== null && pesos[especie]) {
+    const g = ind * pesos[especie];
+    return { pesado: 0, estimado: g, total: g, origen: "Estimado (" + pesos[especie] + " g c/u)" };
+  }
+  return { pesado: 0, estimado: 0, total: 0, origen: "Sin peso promedio" };
+}
+
 // ================== TABLA FINAL (detalle del rango) ==================
 // Layout: A1 título | A2/B2 fecha inicio | A3/B3 fecha fin | A4 periodo | fila 6 encabezados | datos desde fila 7
 function generarTablaFinal() {
@@ -438,6 +494,7 @@ function generarTablaFinal() {
   const rango = leerRangoTabla_();
   const filas = leerFilasDespacho_();
   if (!filas.length) throw new Error("No hay datos en 'Despacho IA'.");
+  const pesos = leerPesosPromedio_();
 
   const validas = filas.filter(function(f) {
     return esFilaValida_(f) && fechaEnRango_(f[COL.FECHA], rango);
@@ -468,13 +525,16 @@ function generarTablaFinal() {
   hoja.getRange("A4").setValue(periodo + " | Registros incluidos: " + validas.length +
     " | Pendientes (no incluidos): " + pendientes);
 
-  const encabezados = ["Fecha", "Producción a despachar", "Cantidad de individuos", "Peso (g)", "Destino"];
+  const encabezados = ["Fecha", "Producción a despachar", "Cantidad de individuos", "Peso (g)", "Destino",
+    "Peso estimado (g)", "Peso total (g)", "Origen del peso"];
   hoja.getRange(6, 1, 1, encabezados.length).setValues([encabezados])
     .setFontWeight("bold").setBackground("#1F6F4A").setFontColor("#FFFFFF");
 
   if (validas.length) {
     const cuerpo = validas.map(function(f) {
-      return [f[COL.FECHA], especieOficial_(f[COL.ESPECIE]), f[COL.CANTIDAD], f[COL.PESO], f[COL.DESTINO]];
+      const p = pesoFila_(f, pesos);
+      return [f[COL.FECHA], especieOficial_(f[COL.ESPECIE]), f[COL.CANTIDAD], f[COL.PESO], f[COL.DESTINO],
+        p.estimado || "", p.total || "", p.origen];
     });
     hoja.getRange(7, 1, cuerpo.length, encabezados.length).setValues(cuerpo)
       .setBorder(true, true, true, true, true, true);
@@ -483,8 +543,8 @@ function generarTablaFinal() {
   const porEspecie = {};
   const porDestino = {};
   validas.forEach(function(f) {
-    acumular_(porEspecie, especieOficial_(f[COL.ESPECIE]), f);
-    acumular_(porDestino, f[COL.DESTINO], f);
+    acumular_(porEspecie, especieOficial_(f[COL.ESPECIE]), f, pesos);
+    acumular_(porDestino, f[COL.DESTINO], f, pesos);
   });
 
   const inicioResumen = 7 + validas.length + 2;
@@ -505,6 +565,7 @@ function generarResumenMensual() {
   const filas = leerFilasDespacho_();
   if (!filas.length) throw new Error("No hay datos en 'Despacho IA'.");
 
+  const pesos = leerPesosPromedio_();
   const nuevosEsp = {};
   const nuevosDes = {};
   const mesesRecalculados = {};
@@ -521,36 +582,47 @@ function generarResumenMensual() {
     const especie = especieOficial_(f[COL.ESPECIE]);
     const destino = String(f[COL.DESTINO] || "").trim();
 
-    if (especie) acumularMes_(nuevosEsp, mesClave + "|" + especie, ym, especie, f);
-    if (destino) acumularMes_(nuevosDes, mesClave + "|" + destino, ym, destino, f);
+    if (especie) acumularMes_(nuevosEsp, mesClave + "|" + especie, ym, especie, f, pesos);
+    if (destino) acumularMes_(nuevosDes, mesClave + "|" + destino, ym, destino, f, pesos);
   });
 
   let hoja = libro.getSheetByName(HOJA_RESUMEN);
   if (!hoja) hoja = libro.insertSheet(HOJA_RESUMEN);
 
   // 1. Leer el histórico existente antes de limpiar la hoja.
+  // La versión anterior (v21) tenía 7 columnas por bloque y el de destino en la columna I; se convierte al formato nuevo.
   const conservEsp = [];
   const conservDes = [];
   const ultimaFila = hoja.getLastRow();
   if (ultimaFila >= 3) {
-    const bloqueEsp = hoja.getRange(3, 1, ultimaFila - 2, ENCABEZADOS_RESUMEN.length).getValues();
-    bloqueEsp.forEach(function(f) {
-      if (f[0] === "" || f[1] === "" || f[2] === "") return;
-      if (!mesesRecalculados[f[0] + "-" + Number(f[1])]) conservEsp.push(f);
-    });
-    if (hoja.getLastColumn() >= 9) {
-      const bloqueDes = hoja.getRange(3, 9, ultimaFila - 2, ENCABEZADOS_RESUMEN_DESTINO.length).getValues();
-      bloqueDes.forEach(function(f) {
+    const formatoViejo = String(hoja.getRange(2, 5).getValue()).trim() === "Total peso (g)";
+    const ancho = formatoViejo ? 7 : ENCABEZADOS_RESUMEN.length;
+    const colDestino = formatoViejo ? 9 : COL_RESUMEN_DESTINO;
+    const aNuevo = function(f, esProduccion) {
+      if (!formatoViejo) return f;
+      // [año, mes, nombre, ind, peso, n, fecha] -> [año, mes, nombre, ind, pesado, estimado, kg, n, fecha]
+      const pp = esProduccion ? pesos[especieOficial_(f[2])] : null;
+      const pesado = aNumero_(f[4]) || 0;
+      const estimado = !pesado && pp ? (aNumero_(f[3]) || 0) * pp : 0;
+      return [f[0], f[1], f[2], f[3], pesado, estimado, (pesado + estimado) / 1000, f[5], f[6]];
+    };
+    const leerBloque = function(col, destino, esProduccion) {
+      if (hoja.getLastColumn() < col) return;
+      hoja.getRange(3, col, ultimaFila - 2, ancho).getValues().forEach(function(f) {
         if (f[0] === "" || f[1] === "" || f[2] === "") return;
-        if (!mesesRecalculados[f[0] + "-" + Number(f[1])]) conservDes.push(f);
+        if (!mesesRecalculados[f[0] + "-" + Number(f[1])]) destino.push(aNuevo(f, esProduccion));
       });
-    }
+    };
+    leerBloque(1, conservEsp, true);
+    leerBloque(colDestino, conservDes, false);
   }
 
   // 2. Construir filas nuevas.
+  const filaMes = function(n) {
+    return [n.anio, n.mes, n.nombre, n.ind, n.pesado, n.estimado, Math.round(n.pesado + n.estimado) / 1000, n.n, ahora];
+  };
   const filasEsp = conservEsp.concat(Object.keys(nuevosEsp).map(function(k) {
-    const n = nuevosEsp[k];
-    return [n.anio, n.mes, n.nombre, n.ind, n.peso, n.n, ahora];
+    return filaMes(nuevosEsp[k]);
   })).sort(function(a, b) {
     if (a[0] !== b[0]) return a[0] - b[0];
     if (a[1] !== b[1]) return a[1] - b[1];
@@ -559,8 +631,7 @@ function generarResumenMensual() {
   });
 
   const filasDes = conservDes.concat(Object.keys(nuevosDes).map(function(k) {
-    const n = nuevosDes[k];
-    return [n.anio, n.mes, n.nombre, n.ind, n.peso, n.n, ahora];
+    return filaMes(nuevosDes[k]);
   })).sort(function(a, b) {
     if (a[0] !== b[0]) return a[0] - b[0];
     if (a[1] !== b[1]) return a[1] - b[1];
@@ -579,31 +650,34 @@ function generarResumenMensual() {
   if (filasEsp.length) {
     hoja.getRange(3, 1, filasEsp.length, ENCABEZADOS_RESUMEN.length)
       .setValues(filasEsp).setBorder(true, true, true, true, true, true);
-    formatearSeguro_(hoja.getRange(3, 7, filasEsp.length, 1), "dd/mm/yyyy hh:mm");
+    formatearSeguro_(hoja.getRange(3, 7, filasEsp.length, 1), "0.00");
+    formatearSeguro_(hoja.getRange(3, 9, filasEsp.length, 1), "dd/mm/yyyy hh:mm");
   }
 
-  hoja.getRange(1, 9).setValue("Resumen mensual - Destino").setFontSize(12).setFontWeight("bold");
-  hoja.getRange(2, 9, 1, ENCABEZADOS_RESUMEN_DESTINO.length)
+  hoja.getRange(1, COL_RESUMEN_DESTINO).setValue("Resumen mensual - Destino").setFontSize(12).setFontWeight("bold");
+  hoja.getRange(2, COL_RESUMEN_DESTINO, 1, ENCABEZADOS_RESUMEN_DESTINO.length)
     .setValues([ENCABEZADOS_RESUMEN_DESTINO])
     .setFontWeight("bold").setBackground("#1F6F4A").setFontColor("#FFFFFF");
   if (filasDes.length) {
-    hoja.getRange(3, 9, filasDes.length, ENCABEZADOS_RESUMEN_DESTINO.length)
+    hoja.getRange(3, COL_RESUMEN_DESTINO, filasDes.length, ENCABEZADOS_RESUMEN_DESTINO.length)
       .setValues(filasDes).setBorder(true, true, true, true, true, true);
-    formatearSeguro_(hoja.getRange(3, 15, filasDes.length, 1), "dd/mm/yyyy hh:mm");
+    formatearSeguro_(hoja.getRange(3, COL_RESUMEN_DESTINO + 6, filasDes.length, 1), "0.00");
+    formatearSeguro_(hoja.getRange(3, COL_RESUMEN_DESTINO + 8, filasDes.length, 1), "dd/mm/yyyy hh:mm");
   }
 
   hoja.setFrozenRows(2);
   hoja.autoResizeColumns(1, ENCABEZADOS_RESUMEN.length);
-  hoja.autoResizeColumns(9, ENCABEZADOS_RESUMEN_DESTINO.length);
+  hoja.autoResizeColumns(COL_RESUMEN_DESTINO, ENCABEZADOS_RESUMEN_DESTINO.length);
 }
 
 // Acumula por mes y nombre (producción o destino).
-function acumularMes_(mapa, clave, ym, nombre, f) {
-  if (!mapa[clave]) mapa[clave] = { anio: ym.anio, mes: ym.mes, nombre: nombre, ind: 0, peso: 0, n: 0 };
+function acumularMes_(mapa, clave, ym, nombre, f, pesos) {
+  if (!mapa[clave]) mapa[clave] = { anio: ym.anio, mes: ym.mes, nombre: nombre, ind: 0, pesado: 0, estimado: 0, n: 0 };
   const ind = aNumero_(f[COL.CANTIDAD]);
-  const peso = aNumero_(f[COL.PESO]);
+  const p = pesoFila_(f, pesos);
   if (ind !== null) mapa[clave].ind += ind;
-  if (peso !== null) mapa[clave].peso += peso;
+  mapa[clave].pesado += p.pesado;
+  mapa[clave].estimado += p.estimado;
   mapa[clave].n += 1;
 }
 
@@ -631,12 +705,13 @@ function especieOficial_(valor) {
   return (r.estado === "ok" || r.estado === "aproximado") ? r.valor : v;
 }
 
-function acumular_(mapa, clave, f) {
-  if (!mapa[clave]) mapa[clave] = { ind: 0, peso: 0 };
+function acumular_(mapa, clave, f, pesos) {
+  if (!mapa[clave]) mapa[clave] = { ind: 0, pesado: 0, estimado: 0 };
   const ind = aNumero_(f[COL.CANTIDAD]);
-  const peso = aNumero_(f[COL.PESO]);
+  const p = pesoFila_(f, pesos);
   if (ind !== null) mapa[clave].ind += ind;
-  if (peso !== null) mapa[clave].peso += peso;
+  mapa[clave].pesado += p.pesado;
+  mapa[clave].estimado += p.estimado;
 }
 
 function escribirBloqueResumen_(hoja, titulo, etiqueta, mapa, filaInicio, orden) {
@@ -646,13 +721,21 @@ function escribirBloqueResumen_(hoja, titulo, etiqueta, mapa, filaInicio, orden)
   });
   if (!claves.length) return filaInicio + 2;
 
-  hoja.getRange(filaInicio + 1, 1, 1, 3)
-    .setValues([[etiqueta, "Total individuos", "Total peso (g)"]])
+  hoja.getRange(filaInicio + 1, 1, 1, 5)
+    .setValues([[etiqueta, "Total individuos", "Peso pesado (g)", "Peso estimado (g)", "Peso total (kg)"]])
     .setFontWeight("bold");
 
-  const filas = claves.map(function(k) { return [k, mapa[k].ind, mapa[k].peso]; });
-  hoja.getRange(filaInicio + 2, 1, filas.length, 3).setValues(filas)
+  const filas = claves.map(function(k) {
+    const m = mapa[k];
+    return [k, m.ind, m.pesado, m.estimado, Math.round(m.pesado + m.estimado) / 1000];
+  });
+  const totales = filas.reduce(function(a, f) { return [a[0], a[1] + f[1], a[2] + f[2], a[3] + f[3], Math.round((a[2] + f[2] + a[3] + f[3])) / 1000]; },
+    ["Total", 0, 0, 0, 0]);
+  filas.push(totales);
+  hoja.getRange(filaInicio + 2, 1, filas.length, 5).setValues(filas)
     .setBorder(true, true, true, true, true, true);
+  hoja.getRange(filaInicio + 1 + filas.length, 1, 1, 5).setFontWeight("bold");
+  formatearSeguro_(hoja.getRange(filaInicio + 2, 5, filas.length, 1), "0.00");
 
   return filaInicio + filas.length + 3;
 }
