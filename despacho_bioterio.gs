@@ -15,10 +15,10 @@ const PESOS_DEFECTO = [
   ["Curies", "", "Sin peso promedio todavía."],
   ["Pollos", "", "Sin peso promedio todavía."],
   ["Gallina", "", "Sin peso promedio todavía."],
-  ["Zophobas", "", "Si se despachan contados, escribir el peso promedio."],
-  ["Dubias", "", "Si se despachan contadas, escribir el peso promedio."],
-  ["Grillos", "", "Normalmente se despachan pesados."],
-  ["Tenebrios", "", "Normalmente se despachan pesados."]
+  ["Zophobas", 0.75, "Promedio aproximado de larva; se usa cuando se anotan individuos."],
+  ["Dubias", 2, "Promedio aproximado; se usa cuando se anotan individuos."],
+  ["Grillos", 0.4, "Promedio aproximado; se usa cuando se anotan individuos."],
+  ["Tenebrios", 0.15, "Promedio aproximado de larva; se usa cuando se anotan individuos."]
 ];
 const VALOR_TACHON = "tachón";
 
@@ -461,9 +461,21 @@ function leerPesosPromedio_() {
     hoja.setFrozenRows(1);
     hoja.autoResizeColumns(1, 3);
   }
+  // Completa los pesos por defecto que falten en una hoja creada con una versión anterior; no cambia los que ya tienen valor.
+  const filas = hoja.getLastRow() >= 2 ? hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues() : [];
+  PESOS_DEFECTO.forEach(function(def) {
+    if (def[1] === "") return;
+    const i = filas.findIndex(function(f) { return especieOficial_(f[0]) === def[0]; });
+    if (i === -1) {
+      hoja.appendRow(def);
+      filas.push(def);
+    } else if (aNumero_(filas[i][1]) === null) {
+      hoja.getRange(i + 2, 2, 1, 2).setValues([[def[1], def[2]]]);
+      filas[i] = [filas[i][0], def[1], def[2]];
+    }
+  });
   const pesos = {};
-  if (hoja.getLastRow() < 2) return pesos;
-  hoja.getRange(2, 1, hoja.getLastRow() - 1, 2).getValues().forEach(function(f) {
+  filas.forEach(function(f) {
     const especie = especieOficial_(f[0]);
     const g = aNumero_(f[1]);
     if (especie && g !== null && g > 0) pesos[especie] = g;
